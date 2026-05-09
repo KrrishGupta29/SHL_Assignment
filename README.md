@@ -1,8 +1,8 @@
 # SHL Conversational Assessment Recommendation Agent
 
 ## Features
-- Clarification of vague hiring requests
 - SHL assessment recommendations
+- Clarification of vague hiring requests
 - Comparison between assessments
 - Refinement handling
 - Stateless API design

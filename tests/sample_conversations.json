@@ -1,0 +1,18 @@
+[
+  {
+    "messages": [
+      {
+        "role": "user",
+        "content": "I need an assessment"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hiring Java backend developer with stakeholder management"
+      }
+    ]
+  }
+]

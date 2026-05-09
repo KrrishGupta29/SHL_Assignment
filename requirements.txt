@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+requests
+beautifulsoup4
+pandas
+sentence-transformers
+faiss-cpu
+numpy
+openai
+python-dotenv
+rank-bm25

@@ -6,6 +6,6 @@ pandas
 sentence-transformers
 faiss-cpu
 numpy
-openai
+groq
 python-dotenv
 rank-bm25

@@ -1,16 +1,19 @@
 import os
-
+import traceback
 
 from groq import Groq
 
 from app.retriever import search_catalog
+
 from app.utils import (
     build_context,
     latest_user_message,
     detect_comparison,
     detect_refinement,
     is_vague,
-    out_of_scope
+    out_of_scope,
+    get_clarification_question,
+    get_test_type
 )
 
 from app.prompts import (
@@ -18,12 +21,30 @@ from app.prompts import (
     COMPARISON_PROMPT,
     RECOMMENDATION_PROMPT
 )
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 client = Groq(
     api_key=os.getenv("GROQ_API_KEY")
 )
+
+
+def format_recommendation(item):
+
+    return {
+        "name": item.get("name", ""),
+        "url": item.get("link", ""),
+        "test_type": get_test_type(item),
+        "duration": item.get("duration", ""),
+        "remote_testing": item.get("remote", ""),
+        "adaptive_support": item.get("adaptive", ""),
+        "description": item.get("description", ""),
+        "languages": item.get("languages", []),
+        "job_levels": item.get("job_levels", []),
+        "keys": item.get("keys", [])
+    }
 
 
 def generate_reply(messages):
@@ -34,7 +55,9 @@ def generate_reply(messages):
 
         full_context = build_context(messages)
 
-        # Guardrails
+        # =========================
+        # OUT OF SCOPE GUARDRAIL
+        # =========================
         if out_of_scope(latest_query):
 
             return {
@@ -46,19 +69,20 @@ def generate_reply(messages):
                 "end_of_conversation": True
             }
 
-        # Clarification
+        # =========================
+        # CLARIFICATION HANDLING
+        # =========================
         if is_vague(full_context):
 
             return {
-                "reply": (
-                    "Could you share more about the role, "
-                    "skills, seniority, or traits needed?"
-                ),
+                "reply": get_clarification_question(full_context),
                 "recommendations": [],
                 "end_of_conversation": False
             }
 
-        # Retrieval
+        # =========================
+        # RETRIEVAL
+        # =========================
         retrieved = search_catalog(full_context)
 
         # No retrieval results
@@ -74,26 +98,42 @@ def generate_reply(messages):
                 "end_of_conversation": False
             }
 
-        # Comparison mode
+        # =========================
+        # COMPARISON MODE
+        # =========================
         if detect_comparison(latest_query):
 
             context = "\n\n".join([
                 f"""
-                NAME: {item['name']}
-                DESCRIPTION: {item['description'][:1500]}
-                """
+NAME: {item.get('name', '')}
+
+DESCRIPTION:
+{item.get('description', '')[:1500]}
+
+JOB LEVELS:
+{', '.join(item.get('job_levels', []))}
+
+LANGUAGES:
+{', '.join(item.get('languages', []))}
+
+DURATION:
+{item.get('duration', '')}
+
+TEST TYPE:
+{get_test_type(item)}
+"""
                 for item in retrieved[:5]
             ])
 
             prompt = f"""
-            {COMPARISON_PROMPT}
+{COMPARISON_PROMPT}
 
-            USER QUERY:
-            {latest_query}
+USER QUERY:
+{latest_query}
 
-            CATALOG DATA:
-            {context}
-            """
+CATALOG DATA:
+{context}
+"""
 
             try:
 
@@ -118,7 +158,9 @@ def generate_reply(messages):
                     "end_of_conversation": False
                 }
 
-            except Exception:
+            except Exception as e:
+
+                traceback.print_exc()
 
                 return {
                     "reply": (
@@ -129,34 +171,51 @@ def generate_reply(messages):
                     "end_of_conversation": False
                 }
 
-        # Recommendation mode
+        # =========================
+        # RECOMMENDATION MODE
+        # =========================
         recommendations = []
 
         for item in retrieved[:5]:
 
-            recommendations.append({
-                "name": item["name"],
-                "url": item["url"],
-                "test_type": item.get(
-                    "test_type",
-                    "Assessment"
-                )
-            })
+            recommendations.append(
+                format_recommendation(item)
+            )
 
         recommendation_context = "\n\n".join([
-            item["name"]
+            f"""
+NAME: {item.get('name', '')}
+
+DESCRIPTION:
+{item.get('description', '')[:1000]}
+
+JOB LEVELS:
+{', '.join(item.get('job_levels', []))}
+
+LANGUAGES:
+{', '.join(item.get('languages', []))}
+
+DURATION:
+{item.get('duration', '')}
+
+TEST TYPE:
+{get_test_type(item)}
+
+KEYS:
+{', '.join(item.get('keys', []))}
+"""
             for item in retrieved[:5]
         ])
 
         prompt = f"""
-        {RECOMMENDATION_PROMPT}
+{RECOMMENDATION_PROMPT}
 
-        USER REQUIREMENTS:
-        {full_context}
+USER REQUIREMENTS:
+{full_context}
 
-        RECOMMENDED ASSESSMENTS:
-        {recommendation_context}
-        """
+RECOMMENDED ASSESSMENTS:
+{recommendation_context}
+"""
 
         try:
 
@@ -181,7 +240,9 @@ def generate_reply(messages):
                 "end_of_conversation": False
             }
 
-        except Exception:
+        except Exception as e:
+
+            traceback.print_exc()
 
             return {
                 "reply": (
@@ -192,12 +253,13 @@ def generate_reply(messages):
                 "end_of_conversation": False
             }
 
-    except Exception:
+    except Exception as e:
+
+        traceback.print_exc()
 
         return {
             "reply": (
-                "An unexpected error occurred while "
-                "processing the request."
+                f"Unexpected error: {str(e)}"
             ),
             "recommendations": [],
             "end_of_conversation": False
